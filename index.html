@@ -140,45 +140,63 @@ function saveWriting(){let t=document.getElementById("writing").value;localStora
 function speakWords(){let x=curriculum[currentDay-1];let text=x.vocab.map(v=>v[0]).join(". ");say(text);}
 function playDialogue(){say("Colleague. Hi, could you give me a quick update? You. Sure. We are currently checking the network connection. Colleague. Do you know what caused the issue? You. Not yet. We are still investigating the root cause. Colleague. When can we expect another update? You. I will share an update as soon as we have confirmed information.");}
 let audioStatusTimer=null;
+let englishVoices=[];
+function loadEnglishVoices(){
+  if(!('speechSynthesis' in window)) return [];
+  const all=window.speechSynthesis.getVoices()||[];
+  englishVoices=all.filter(v=>/^en(-|_)/i.test(v.lang));
+  return all;
+}
 function audioStatus(message){
  const el=document.getElementById("audioStatus");
  if(!el)return;
  el.textContent=message;el.classList.add("show");
  if(audioStatusTimer)clearTimeout(audioStatusTimer);
- audioStatusTimer=setTimeout(()=>el.classList.remove("show"),4500);
+ audioStatusTimer=setTimeout(()=>el.classList.remove("show"),5500);
 }
 function say(t){
+ if(!window.isSecureContext && location.hostname!=='localhost'){
+   audioStatus("Trang cần được mở qua HTTPS trên GitHub Pages để dùng tính năng đọc. Hãy kiểm tra địa chỉ bắt đầu bằng https://.");
+ }
  if(!("speechSynthesis" in window) || !("SpeechSynthesisUtterance" in window)){
-   audioStatus("Trình duyệt này không hỗ trợ đọc văn bản. Hãy mở bằng Microsoft Edge hoặc Google Chrome mới nhất.");
+   audioStatus("Trình duyệt không hỗ trợ đọc văn bản. Hãy mở bằng Microsoft Edge hoặc Google Chrome mới nhất.");
    return;
  }
  const text=String(t||"").trim();
  if(!text){audioStatus("Không có nội dung để đọc.");return;}
+ const synth=window.speechSynthesis;
  try{
-   const synth=window.speechSynthesis;
    synth.cancel();
-   const utterance=new SpeechSynthesisUtterance(text);
-   utterance.lang="en-US";
-   utterance.rate=0.82;
-   utterance.pitch=1;
-   const voices=synth.getVoices();
-   const englishVoice=voices.find(v=>/^en-US$/i.test(v.lang))||voices.find(v=>/^en-/i.test(v.lang));
-   if(englishVoice)utterance.voice=englishVoice;
-   utterance.onstart=()=>audioStatus("▶ Đang đọc tiếng Anh...");
-   utterance.onend=()=>audioStatus("✓ Đã đọc xong. Bấm loa để nghe lại.");
-   utterance.onerror=(event)=>{
-     let msg="Không phát được giọng đọc.";
-     if(event.error==="not-allowed")msg="Trình duyệt chặn âm thanh. Hãy bấm lại nút loa và kiểm tra quyền âm thanh.";
-     else if(event.error==="voice-unavailable")msg="Máy chưa có giọng đọc tiếng Anh. Hãy cài thêm English voice trong Windows Settings.";
-     else if(event.error==="audio-busy")msg="Âm thanh đang bận. Đợi một chút rồi thử lại.";
-     audioStatus(msg);
-   };
-   if(!voices.length)audioStatus("Đang khởi tạo giọng đọc. Nếu chưa nghe được, hãy thử lại sau vài giây.");
    synth.resume();
-   synth.speak(utterance);
-   if(!englishVoice && voices.length)audioStatus("Đang dùng giọng đọc mặc định. Bạn có thể cài English voice trong Windows để có phát âm tốt hơn.");
+   const speakNow=()=>{
+     const utterance=new SpeechSynthesisUtterance(text);
+     utterance.lang="en-US";
+     utterance.rate=0.82;
+     utterance.pitch=1;
+     const voices=loadEnglishVoices();
+     const voice=englishVoices.find(v=>/^en-US$/i.test(v.lang))
+       ||englishVoices.find(v=>/^en-GB$/i.test(v.lang))
+       ||englishVoices[0];
+     if(voice) utterance.voice=voice;
+     utterance.onstart=()=>audioStatus("▶ Đang đọc tiếng Anh...");
+     utterance.onend=()=>audioStatus("✓ Đã đọc xong. Bấm loa để nghe lại.");
+     utterance.onerror=(event)=>{
+       const errors={
+         "not-allowed":"Trình duyệt đang chặn âm thanh. Hãy bấm lại nút loa và kiểm tra cài đặt âm thanh.",
+         "voice-unavailable":"Không tìm thấy giọng đọc. Hãy cài English voice trong Windows Settings → Time & language → Speech.",
+         "audio-busy":"Âm thanh đang bận. Đợi một chút rồi thử lại.",
+         "synthesis-failed":"Trình đọc tiếng nói gặp lỗi. Hãy tải lại trang và thử lại.",
+         "language-unavailable":"Máy chưa có giọng tiếng Anh phù hợp. Hãy cài English voice trong Windows Settings."
+       };
+       audioStatus(errors[event.error]||("Không phát được âm thanh ("+(event.error||"unknown")+"). Hãy thử lại hoặc kiểm tra Windows audio output."));
+     };
+     synth.speak(utterance);
+     if(!voice) audioStatus("Máy chưa có English voice. Đang thử giọng mặc định; nên cài English voice trong Windows để phát âm tốt hơn.");
+   };
+   // Chrome/Edge đôi khi cần một nhịp sau cancel() trước khi nhận lệnh speak().
+   setTimeout(speakNow,120);
  }catch(err){
-   audioStatus("Không khởi động được âm thanh. Hãy thử mở file bằng Edge hoặc Chrome.");
+   audioStatus("Không khởi động được âm thanh. Hãy tải lại trang hoặc mở bằng Edge/Chrome.");
  }
 }
 function insertStarter(q){let box=document.getElementById("writing");let start=box.selectionStart,end=box.selectionEnd;let before=box.value.slice(0,start),after=box.value.slice(end);let spacer=before&&!/\\s$/.test(before)?" ":"";box.value=before+spacer+q+" "+after;box.focus();box.selectionStart=box.selectionEnd=(before+spacer+q+" ").length;}
@@ -186,6 +204,6 @@ function checkWriting(){let t=document.getElementById("writing").value.trim();le
 function startSpeaking(){let SR=window.SpeechRecognition||window.webkitSpeechRecognition;if(!SR){document.getElementById("speechText").textContent="Speech recognition is not supported. Practise aloud and record yourself with your phone.";return;}let r=new SR();r.lang="en-US";r.onresult=e=>document.getElementById("speechText").textContent="Recognized: "+e.results[0][0].transcript;r.onerror=()=>document.getElementById("speechText").textContent="Microphone unavailable. You can still practise aloud.";r.start();document.getElementById("speechText").textContent="Listening... speak now.";}
 function changeDay(n){openDay(Math.max(1,Math.min(90,currentDay+n)));}
 document.getElementById("markDone").onclick=()=>{if(state.done.includes(currentDay))return;state.done.push(currentDay);state.done.sort((a,b)=>a-b);state.xp+=10;save();document.getElementById("markDone").textContent="Completed ✓";document.getElementById("markDone").disabled=true;document.getElementById("doneNote").textContent="Progress saved. Well done!";renderCalendar();};
-if("speechSynthesis" in window){window.speechSynthesis.getVoices();window.speechSynthesis.addEventListener("voiceschanged",()=>window.speechSynthesis.getVoices());}
+if("speechSynthesis" in window){loadEnglishVoices();window.speechSynthesis.addEventListener("voiceschanged",loadEnglishVoices);}
 renderCalendar();renderStats();
 </script></body></html>
