@@ -114,8 +114,10 @@ function openDay(n){currentDay=Math.max(1,Math.min(90,n));let x=curriculum[curre
  renderLesson(x);renderCalendar();
  document.getElementById("markDone").textContent=state.done.includes(n)?"Completed ✓":"Mark day complete ✓";document.getElementById("markDone").disabled=state.done.includes(n);document.getElementById("doneNote").textContent=state.done.includes(n)?"This day is saved in your progress.":"Complete the lesson and daily quiz, then mark your progress.";
 }
+function escapeAttr(value){return String(value).replace(/&/g,"&amp;").replace(/\"/g,"&quot;").replace(/</g,"&lt;").replace(/>/g,"&gt;");}
 function renderLesson(x){
- document.getElementById("tab-vocab").innerHTML=`<div class="section"><h3>10 essential words and phrases</h3><p class="muted">Học cả cụm từ, không học từ đơn lẻ. Đọc to ví dụ và tự đặt thêm một câu.</p><table class="vocabtable"><thead><tr><th>Word / IPA</th><th>Meaning & usage</th><th>Example</th></tr></thead><tbody>${x.vocab.map((v,i)=>`<tr><td><b>${v[0]}</b> <button class="soundbtn" onclick="say(${JSON.stringify(v[0])})">🔊 Listen</button><br><span class="ipa">/${v[1]}/</span><br><span class="muted">${v[2]}</span></td><td>${v[3]}<br><span class="muted">${v[4]}</span></td><td>${exampleFor(v[0],x)}<br><button class="soundbtn" onclick="say(${JSON.stringify(exampleFor(v[0],x))})">🔊 Hear example</button></td></tr>`).join("")}</tbody></table></div><div class="section"><h3>Vocabulary practice</h3><p>Cover the Vietnamese meaning and try to recall it. Then create one sentence for each word.</p><button class="btn" onclick="speakWords()">🔊 Listen to vocabulary</button></div>`;
+ document.getElementById("tab-vocab").innerHTML=`<div class="section"><h3>10 essential words and phrases</h3><p class="muted">Học cả cụm từ, không học từ đơn lẻ. Đọc to ví dụ và tự đặt thêm một câu.</p><table class="vocabtable"><thead><tr><th>Word / IPA</th><th>Meaning & usage</th><th>Example</th></tr></thead><tbody>${x.vocab.map((v,i)=>{const example=exampleFor(v[0],x);return `<tr><td><b>${v[0]}</b> <button type="button" class="soundbtn" data-speak="${escapeAttr(v[0])}">🔊 Listen</button><br><span class="ipa">/${v[1]}/</span><br><span class="muted">${v[2]}</span></td><td>${v[3]}<br><span class="muted">${v[4]}</span></td><td>${example}<br><button type="button" class="soundbtn" data-speak="${escapeAttr(example)}">🔊 Hear example</button></td></tr>`;}).join("")}</tbody></table></div><div class="section"><h3>Vocabulary practice</h3><p>Cover the Vietnamese meaning and try to recall it. Then create one sentence for each word.</p><button class="btn" onclick="speakWords()">🔊 Listen to vocabulary</button></div>`;
+ document.getElementById("tab-vocab").querySelectorAll("button[data-speak]").forEach(button=>{button.addEventListener("click",function(){say(this.dataset.speak);});});
  document.getElementById("tab-grammar").innerHTML=`<div class="section"><h3>Today's grammar: ${x.grammar}</h3><p>${x.explain}</p><div class="example"><b>Model sentence</b><br>${x.model}<div class="vi">Đọc câu, xác định cấu trúc ngữ pháp và thử thay đổi chủ ngữ/thời gian.</div></div><h3>Common mistakes</h3><p>Không dịch từng từ từ tiếng Việt. Hãy xác định chủ ngữ, động từ chính và thời điểm trước khi chọn cấu trúc.</p><div class="example"><b>Practice:</b> Write three original sentences using today's grammar. At least one sentence should relate to your work.</div></div>`;
  document.getElementById("tab-patterns").innerHTML=`<div class="section"><h3>Useful sentence patterns</h3>${[x.model,"I usually ... when ...","At the moment, I am ...","I am responsible for ...","The main reason is that ...","Could you please ...?","I would recommend ... because ..."].map((s,i)=>`<div class="example"><b>${i+1}.</b> ${s}</div>`).join("")}<p class="muted">Thay phần ... bằng thông tin thật của bạn. Nói mỗi mẫu câu 3 lần.</p></div>`;
  const passage=`In my role, I work with colleagues in the IT department to keep business services running smoothly. I usually monitor the network, check alerts and respond to user requests. When a problem occurs, I first identify the symptoms and the affected services. Then I investigate the possible cause and communicate the next steps. Clear communication helps the team work efficiently and keeps users informed.`;
@@ -156,47 +158,45 @@ function audioStatus(message){
 }
 function say(t){
  if(!window.isSecureContext && location.hostname!=='localhost'){
-   audioStatus("Trang cần được mở qua HTTPS trên GitHub Pages để dùng tính năng đọc. Hãy kiểm tra địa chỉ bắt đầu bằng https://.");
- }
- if(!("speechSynthesis" in window) || !("SpeechSynthesisUtterance" in window)){
-   audioStatus("Trình duyệt không hỗ trợ đọc văn bản. Hãy mở bằng Microsoft Edge hoặc Google Chrome mới nhất.");
+   audioStatus("Hãy mở website bằng địa chỉ HTTPS trên GitHub Pages.");
    return;
  }
- const text=String(t||"").trim();
- if(!text){audioStatus("Không có nội dung để đọc.");return;}
- const synth=window.speechSynthesis;
+ if(!('speechSynthesis' in window) || !('SpeechSynthesisUtterance' in window)){
+   audioStatus("Trình duyệt không hỗ trợ đọc văn bản. Hãy dùng Microsoft Edge hoặc Google Chrome.");
+   return;
+ }
+ const text=String(t||'').trim();
+ if(!text){audioStatus('Không có nội dung để đọc.');return;}
  try{
+   const synth=window.speechSynthesis;
+   // Quan trọng: gọi speak() trực tiếp trong thao tác click để không mất quyền phát âm thanh của trình duyệt.
    synth.cancel();
-   synth.resume();
-   const speakNow=()=>{
-     const utterance=new SpeechSynthesisUtterance(text);
-     utterance.lang="en-US";
-     utterance.rate=0.82;
-     utterance.pitch=1;
-     const voices=loadEnglishVoices();
-     const voice=englishVoices.find(v=>/^en-US$/i.test(v.lang))
-       ||englishVoices.find(v=>/^en-GB$/i.test(v.lang))
-       ||englishVoices[0];
-     if(voice) utterance.voice=voice;
-     utterance.onstart=()=>audioStatus("▶ Đang đọc tiếng Anh...");
-     utterance.onend=()=>audioStatus("✓ Đã đọc xong. Bấm loa để nghe lại.");
-     utterance.onerror=(event)=>{
-       const errors={
-         "not-allowed":"Trình duyệt đang chặn âm thanh. Hãy bấm lại nút loa và kiểm tra cài đặt âm thanh.",
-         "voice-unavailable":"Không tìm thấy giọng đọc. Hãy cài English voice trong Windows Settings → Time & language → Speech.",
-         "audio-busy":"Âm thanh đang bận. Đợi một chút rồi thử lại.",
-         "synthesis-failed":"Trình đọc tiếng nói gặp lỗi. Hãy tải lại trang và thử lại.",
-         "language-unavailable":"Máy chưa có giọng tiếng Anh phù hợp. Hãy cài English voice trong Windows Settings."
-       };
-       audioStatus(errors[event.error]||("Không phát được âm thanh ("+(event.error||"unknown")+"). Hãy thử lại hoặc kiểm tra Windows audio output."));
+   const utterance=new SpeechSynthesisUtterance(text);
+   utterance.lang='en-US';
+   utterance.rate=0.85;
+   utterance.pitch=1;
+   const voices=synth.getVoices()||[];
+   const voice=voices.find(v=>/^en-US$/i.test(v.lang))
+     ||voices.find(v=>/^en-GB$/i.test(v.lang))
+     ||voices.find(v=>/^en/i.test(v.lang));
+   if(voice) utterance.voice=voice;
+   utterance.onstart=()=>audioStatus('▶ Đang đọc tiếng Anh...');
+   utterance.onend=()=>audioStatus('✓ Đã đọc xong.');
+   utterance.onerror=(event)=>{
+     const errors={
+       'not-allowed':'Trình duyệt hoặc hệ điều hành đang chặn phát âm thanh.',
+       'voice-unavailable':'Không tìm thấy giọng đọc. Hãy cài English voice trong Windows Settings → Time & language → Speech.',
+       'audio-busy':'Âm thanh đang bận. Hãy thử lại.',
+       'synthesis-failed':'Trình đọc tiếng nói gặp lỗi. Hãy tải lại trang.',
+       'language-unavailable':'Máy chưa có giọng tiếng Anh phù hợp. Hãy cài English voice trong Windows.'
      };
-     synth.speak(utterance);
-     if(!voice) audioStatus("Máy chưa có English voice. Đang thử giọng mặc định; nên cài English voice trong Windows để phát âm tốt hơn.");
+     audioStatus(errors[event.error]||('Không phát được âm thanh: '+(event.error||'unknown')));
    };
-   // Chrome/Edge đôi khi cần một nhịp sau cancel() trước khi nhận lệnh speak().
-   setTimeout(speakNow,120);
+   synth.resume();
+   synth.speak(utterance);
+   if(!voice) audioStatus('Không tìm thấy English voice; đang thử giọng mặc định của máy.');
  }catch(err){
-   audioStatus("Không khởi động được âm thanh. Hãy tải lại trang hoặc mở bằng Edge/Chrome.");
+   audioStatus('Không khởi động được âm thanh: '+(err.message||'unknown error'));
  }
 }
 function insertStarter(q){let box=document.getElementById("writing");let start=box.selectionStart,end=box.selectionEnd;let before=box.value.slice(0,start),after=box.value.slice(end);let spacer=before&&!/\\s$/.test(before)?" ":"";box.value=before+spacer+q+" "+after;box.focus();box.selectionStart=box.selectionEnd=(before+spacer+q+" ").length;}
